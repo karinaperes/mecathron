@@ -172,7 +172,7 @@
                     <h3 class="text-2xl font-bold text-white mb-4">Semana 2 (12/11 - 18/11): Protocolos!</h3>
                     <p class="mb-4 text-slate-300">Foco: Robôs 100% montados e com firmware básico. Servidores com lógica inicial. Arenas em construção.</p>
                     <div class="p-3 bg-sky-900/50 rounded-lg mb-4 border border-sky-600">
-                        <span class="font-bold text-sky-200">MILESTONE (14/11):</span> Publicação do primeiro vídeo (Teaser) para a comunidade Python Floripa!
+                        <span class="font-bold text-sky-200">MILESTONE (14/11):</span> Publicação da primeira versão da documentação para a comunidade Python Floripa!
                     </div>
                     <details>
                         <summary>
@@ -196,7 +196,7 @@
                     <h3 class="text-2xl font-bold text-white mb-4">Semana 3 (19/11 - 25/11): Integração Total!</h3>
                     <p class="mb-4 text-slate-300">Foco: O momento da verdade! Testar os robôs, servidores e arenas juntos. O jogo funciona?</p>
                     <div class="p-3 bg-sky-900/50 rounded-lg mb-4 border border-sky-600">
-                        <span class="font-bold text-sky-200">MILESTONE (21/11):</span> Publicação do vídeo com as regras detalhadas do evento.
+                        <span class="font-bold text-sky-200">MILESTONE (21/11):</span> Publicação do vídeo Teaser do evento.
                     </div>
                     <details>
                         <summary>
