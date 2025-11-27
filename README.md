@@ -208,3 +208,140 @@ O firmware (`esp32_websocket.ino`) possui recursos avançados para competição:
   * **Filtro de IP:** O sistema foi projetado para evitar sequestro de robôs. [cite\_start]Ele permite conexão apenas de um IP Fixo configurado (`FIXED_IP_CONFIG`) [cite: 2] [cite\_start]ou do primeiro cliente que ocupar o "Slot Dinâmico"[cite: 3].
   * [cite\_start]**Persistência:** Parâmetros de calibração dos motores (ganho e offset) são salvos na memória não volátil (Preferences), permitindo ajuste fino sem reprogramar [cite: 29-30].
   * [cite\_start]**Calibração:** O firmware aplica matematicamente ganhos e offsets aos comandos recebidos para corrigir diferenças físicas entre os motores antes de aplicar a energia [cite: 36-37].
+
+
+
+
+# ⚽ Rocket League Arena: Futebol de Robôs Autônomos
+
+Este projeto implementa um sistema de futebol robótico em malha fechada. Utilizando visão computacional, o sistema rastreia dois robôs e uma bola em tempo real, permitindo que clientes (computadores dos competidores) desenvolvam estratégias autônomas para empurrar a bola para o gol adversário.
+
+## 1\. 🔄 Arquitetura do Sistema
+
+O sistema funciona em um ciclo contínuo de percepção e ação, onde o servidor de visão atua como o juiz e o GPS da partida.
+
+1.  **Sensoriamento (Servidor de Visão):** Uma câmera no teto capta o campo. O servidor processa a imagem para encontrar os jogadores e a bola, além de verificar se houve gol.
+2.  **Estratégia (Cliente Competidor):** O software do competidor recebe as coordenadas. A lógica aqui é geométrica: calcular o ângulo necessário para alinhar o Robô com a Bola e o Gol adversário.
+3.  **Ação (Robô):** O firmware recebe comandos de velocidade e move o robô fisicamente.
+
+### Fluxo de Dados
+
+```mermaid
+graph LR
+    A[Câmera/Arena] -->|Imagem| B(Servidor de Visão)
+    B -->|JSON: Posição Global| C(Cliente Competidor)
+    C -->|JSON: Comandos Motor| D[Firmware ESP32]
+    D -->|Movimento Físico| A
+    D -.->|JSON: Telemetria| C
+```
+-----
+
+## 2\. 📂 Descrição dos Componentes
+
+### A. O Juiz Eletrônico: `rocket-league_v2.py`
+
+Este é o servidor central da arena. Diferente do Pac-Man, aqui o foco é a física da bola e a detecção de gols.
+
+  * **Rastreamento:** Identifica 3 objetos principais por cor: `carro_1`, `carro_2` e `bola`.
+  * **Arbitragem (Gols):**
+      * Monitora duas áreas de interesse (ROIs): `GOL_1` (Time Azul) e `GOL_2` (Time Vermelho).
+      * Se a bola entra em um ROI, o placar é atualizado na tela do servidor.
+  * **Controle de Fluxo:**
+      * **Pausa Automática:** Assim que um gol é marcado, o sistema "congela" e exibe o placar, aguardando que um humano reposicione os robôs e pressione a tecla **ESPAÇO** para retomar a partida.
+      * **Cooldown:** Existe um temporizador de segurança (`GOAL_COOLDOWN_FRAMES`) para evitar que o mesmo gol seja contado múltiplas vezes enquanto a bola está dentro da rede.
+
+### B. O Cliente Estratégico (Seu Código)
+
+*Atua como o "Cérebro".*
+Neste jogo, a estratégia é puramente vetorial. O cliente deve:
+
+1.  Ler a posição da `bola`.
+2.  Ler a posição do `seu_gol_alvo`.
+3.  Calcular uma rota de interceptação para bater na bola na direção certa.
+
+### C. O Robô (Firmware)
+
+*Atua como os "Músculos".*
+Recebe comandos simples de velocidade (Motor Esquerdo / Motor Direito) para executar as manobras de ataque e defesa.
+
+-----
+
+## 3\. 📡 Protocolo de Dados (JSON)
+
+Nesta versão do Rocket League, o protocolo é mais leve. O servidor foca em enviar a **telemetria pura** das posições. O estado do jogo (placar e pausas) é gerenciado visualmente na tela do servidor, enquanto os robôs recebem dados contínuos de navegação.
+
+### JSON Enviado pelo Servidor (`rocket-league_v2.py`)
+
+O servidor envia uma **Lista de Objetos**. Não há separação de "estado de jogo" no JSON, apenas a física bruta.
+
+```json
+[
+   {
+      "personagem":"bola",
+      "x_arena":204,
+      "y_arena":174,
+      "x_global":643,
+      "y_global":401,
+      "angulo_graus":272.49
+   },
+   {
+      "personagem":"carro_1",
+      "x_arena":379,
+      "y_arena":9,
+      "x_global":818,
+      "y_global":236,
+      "angulo_graus":15.07
+   },
+   {
+      "personagem":"carro_2",
+      "x_arena":379,
+      "y_arena":9,
+      "x_global":818,
+      "y_global":236,
+      "angulo_graus":15.07
+   }
+]
+```
+
+### 4\. Firmware -\> Cliente (Telemetria)
+
+O robô retorna a confirmação do valor configurado em cada motor. Serve como confirmação que o valor enviado foi configurado. O robô poderá enviar outros dados, como valores de sensores, mas estes devem ser IGNORADOS, pois nesta versão do Hackathon não foi possível implementar estas funcionalidades.
+
+```json
+{
+  "motor1": { "vel": 200 },
+  "motor2": { "vel": -180 },
+  "presenca": {
+    "esq": 1,    //IGNORAR
+    "dir": 0,    //IGNORAR
+    "tras": 1    //IGNORAR
+  },
+  "distancia_cm": 15.5  // IGNORAR
+}
+```
+
+-----
+
+### Detalhamento dos Campos
+
+  * **Lista `[]`**: O JSON raiz é um *array*. Cada elemento é um objeto detectado.
+  * **`personagem`**: O identificador configurado no arquivo `calibracao_camera_rocket_league.json`. Geralmente:
+      * `"bola"`: O objeto a ser perseguido.
+      * `"carro_1"` / `"carro_2"`: Os robôs competidores.
+  * **`x_global` / `y_global`**: Posição absoluta em pixels na imagem da câmera (1280x720). É usada para calcular distâncias e vetores.
+  * **`angulo_graus`**: A orientação da frente do robô.
+      * *Nota:* Para a bola, o ângulo pode ser ignorado (ou ser 0.0), pois ela é esférica, mas para os robôs é crucial para saber como girar para chutar.
+
+-----
+
+## 5\. 🎮 Regras da Lógica de Controle
+
+Para fechar a malha de controle neste jogo, o cliente deve implementar a seguinte lógica básica:
+
+1.  **Identificar Alvos:**
+      * Se sou `carro_1` (ex: Lado Esquerdo), meu alvo é chutar a `bola` para dentro do `GOL_2` (Lado Direito).
+2.  **Navegação:**
+      * Diferente do Pac-Man (fuga/caça), aqui a navegação é de **Interceptação**.
+      * O robô não deve ir diretamente para a bola; ele deve ir para um ponto *atrás* da bola, alinhado com o gol, para poder empurrá-la.
+3.  **Pausa:**
+      * Quando ocorre um gol, o servidor congela a imagem e para de atualizar posições logicamente na tela, mas o WebSocket continua enviando a última posição conhecida ou dados vazios. O cliente deve estar preparado para parar os motores se perceber que o jogo "travou" visualmente ou se implementado um comando manual de parada.
