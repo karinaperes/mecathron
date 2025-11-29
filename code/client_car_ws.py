@@ -5,10 +5,9 @@ import time
 
 # --- CONFIGURAÇÕES ---
 # Lembre-se de substituir o IP pelo IP real do seu ESP32!
-ESP32_IP = "172.16.105.43"  # Exemplo: Adapte ao IP do seu ESP32
+ESP32_IP = "192.168.1.121:81"  # Exemplo: Adapte ao IP do seu ESP32
 WEBSOCKET_PORT = 81
 WEBSOCKET_URL = f"ws://{ESP32_IP}:{WEBSOCKET_PORT}"
-
 # Objeto global para armazenar o estado atual da telemetria
 telemetria_atual = {}
 
