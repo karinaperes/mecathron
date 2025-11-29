@@ -9,6 +9,7 @@ import threading
 import queue
 import math
 import time
+from enum import Enum
 
 try:
     import websocket # pip install websocket-client
@@ -18,9 +19,9 @@ except ImportError:
     sys.exit()
 
 # --- CONFIGURAÇÕES ---
-WEBSOCKET_URI_GAME = "ws://127.0.0.1:8765"
-WEBSOCKET_URI_CAR = "ws://192.168.1.102:81"
-MEU_PERSONAGEM = "fantasma_1" # Confirme o nome no JSON!
+WEBSOCKET_URI_GAME = "ws://192.168.1.106:8765"
+WEBSOCKET_URI_CAR = "ws://192.168.1.121:81"
+MEU_PERSONAGEM = "carro_1" # Confirme o nome no JSON!
 
 # --- PARAMETROS DE MOVIMENTO ---
 FREQ_CONTROLE = 0.2  # 5 Hz (1 / 5 = 0.2 segundos)
@@ -41,6 +42,17 @@ historico_posicao = []
 MAX_HISTORICO = 10 # Guarda os últimos 10 posições (~2 segundos a 5Hz)
 MODO_DESTRAMENTO = False
 TIMER_DESTRAMENTO = 0
+
+# Modo de controle
+class ModoControle(Enum):
+    AUTOMATICO = "automatico"
+    TECLADO = "teclado"
+    DEBUG = "debug"
+
+modo_controle_atual = ModoControle.AUTOMATICO
+# Variáveis para controle por teclado
+teclas_pressionadas = {}
+ultima_msg_json = None
 
 # ==========================================
 # 1. THREAD CARRO (Envia Comandos)
@@ -124,10 +136,28 @@ def checar_travamento(pos_atual):
     return dist < 10
 
 # ==========================================
-# 4. LOOP PRINCIPAL (5 Hz)
+# 4. CONTROLE POR TECLADO
+# ==========================================
+def processar_comando_teclado():
+    """ Processa as setas do teclado e retorna (m1, m2) """
+    m1, m2 = 0, 0
+    
+    if teclas_pressionadas.get(pygame.K_UP, False):    # Seta para cima
+        m1, m2 = VEL_FRENTE, VEL_FRENTE
+    elif teclas_pressionadas.get(pygame.K_DOWN, False):  # Seta para baixo
+        m1, m2 = VEL_RE, VEL_RE
+    elif teclas_pressionadas.get(pygame.K_LEFT, False):  # Seta para esquerda
+        m1, m2 = VEL_CURVA_FRACA, VEL_CURVA_FORTE
+    elif teclas_pressionadas.get(pygame.K_RIGHT, False): # Seta para direita
+        m1, m2 = VEL_CURVA_FORTE, VEL_CURVA_FRACA
+    
+    return m1, m2
+
+# ==========================================
+# 5. LOOP PRINCIPAL (5 Hz)
 # ==========================================
 def main():
-    global running, MODO_DESTRAMENTO, TIMER_DESTRAMENTO
+    global running, MODO_DESTRAMENTO, TIMER_DESTRAMENTO, modo_controle_atual, ultima_msg_json
     
     # Inicializa Pygame (Janela de Status)
     pygame.init()
@@ -149,7 +179,22 @@ def main():
     while running:
         # Eventos UI
         for event in pygame.event.get():
-            if event.type == pygame.QUIT: running = False
+            if event.type == pygame.QUIT: 
+                running = False
+            elif event.type == pygame.KEYDOWN:
+                teclas_pressionadas[event.key] = True
+                # Mudar modo de controle com F1, F2, F3
+                if event.key == pygame.K_F1:
+                    modo_controle_atual = ModoControle.AUTOMATICO
+                    print(">>> MODO: AUTOMÁTICO")
+                elif event.key == pygame.K_F2:
+                    modo_controle_atual = ModoControle.TECLADO
+                    print(">>> MODO: TECLADO (Use setas para controlar)")
+                elif event.key == pygame.K_F3:
+                    modo_controle_atual = ModoControle.DEBUG
+                    print(">>> MODO: DEBUG (Mostrando JSON recebido)")
+            elif event.type == pygame.KEYUP:
+                teclas_pressionadas[event.key] = False
 
         # Verifica Timer de Controle (5Hz)
         now = time.time()
@@ -161,8 +206,24 @@ def main():
                 continue
             
             data = data_queue.get()
+            
+            # Garante que data é um dicionário
+            if isinstance(data, list):
+                continue
+                
+            # Armazena último JSON para debug
+            ultima_msg_json = data
+            
             estado = data.get("estado_jogo", {})
             objetos = data.get("objetos", [])
+
+            # --- MODO DEBUG ---
+            if modo_controle_atual == ModoControle.DEBUG:
+                print("\n=== JSON RECEBIDO ===")
+                print(json.dumps(data, indent=2, ensure_ascii=False))
+                print("====================\n")
+                command_queue.put((0, 0))
+                continue
 
             # 2. Regra de PAUSA / GAME OVER
             if estado.get("paused") or estado.get("game_over"):
@@ -179,6 +240,16 @@ def main():
             alvo = next((o for o in objetos if 'bola' in o['personagem'] or 'pac-man' in o['personagem']), None)
 
             if eu and alvo:
+                # --- MODO TECLADO ---
+                if modo_controle_atual == ModoControle.TECLADO:
+                    m1, m2 = processar_comando_teclado()
+                    if m1 != 0 or m2 != 0:
+                        status_msg = f"TECLADO: M1={m1}, M2={m2}"
+                        command_queue.put((m1, m2))
+                        cmd_txt = f"{m1}, {m2}"
+                        print(f"[5Hz] {status_msg}")
+                    continue
+
                 # --- LÓGICA DE DESTRAVAMENTO ---
                 if MODO_DESTRAMENTO:
                     # Se ativado, anda de ré por 1 segundo
@@ -240,13 +311,21 @@ def main():
         screen.fill((0,0,0))
         lines = [
             f"Robo: {MEU_PERSONAGEM}",
+            f"Modo: {modo_controle_atual.value.upper()}",
             f"Status: {status_msg}",
             f"Comando Atual: {cmd_txt}",
-            f"Freq: 5Hz"
+            f"Freq: 5Hz",
+            "",
+            "F1: Automático | F2: Teclado | F3: Debug (JSON)"
         ]
         y = 20
         for l in lines:
-            color = (255, 50, 50) if "DESTRAVANDO" in status_msg else (0, 255, 0)
+            if "DESTRAVANDO" in status_msg:
+                color = (255, 50, 50)
+            elif "TECLADO" in status_msg:
+                color = (0, 150, 255)
+            else:
+                color = (0, 255, 0)
             screen.blit(font.render(l, True, color), (20, y))
             y += 30
         pygame.display.flip()
