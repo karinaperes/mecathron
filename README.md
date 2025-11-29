@@ -346,4 +346,5 @@ Para fechar a malha de controle neste jogo, o cliente deve implementar a seguint
 3.  **Pausa:**
       * Quando ocorre um gol, o servidor congela a imagem e para de atualizar posições logicamente na tela, mas o WebSocket continua enviando a última posição conhecida ou dados vazios. O cliente deve estar preparado para parar os motores se perceber que o jogo "travou" visualmente ou se implementado um comando manual de parada.
 #   h a c k a t o o n - p y t h o n f l o r i p a - i f s c  
+ #   h a c k a t o o n - p y t h o n f l o r i p a - i f s c  
  
